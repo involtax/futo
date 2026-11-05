@@ -18,6 +18,8 @@ import java.util.concurrent.TimeUnit
 
 /** Runs the packaged Kotlin decoder against the matching Linux JNI build on real Russian audio. */
 class GigaAmInferenceTest {
+    private fun words(text: String) = text.lowercase().replace('ё', 'е')
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
     private fun withModel(test: (GigaAmDecoder, FloatArray) -> Unit) {
         val path = System.getProperty("gigaam.modelDir")
         assumeTrue("Set GIGAAM_TEST_MODEL_DIR and SHERPA_JNI_DIR for native inference tests", path != null)
@@ -47,8 +49,10 @@ class GigaAmInferenceTest {
 
     @Test fun transcribesWholeRussianRecording() = withModel { model, audio ->
         val result = model.decode(audio)
-        assertTrue(result.text, result.text.startsWith("ничьих не требуя похвал"))
-        assertTrue(result.text, result.text.endsWith("у лукоморья дуб зеленый"))
+        assertTrue(result.text, words(result.text).startsWith("ничьих не требуя похвал"))
+        assertTrue(result.text, words(result.text).endsWith("у лукоморья дуб зеленый"))
+        assertTrue("E2E capitalization missing: ${result.text}", result.text.first().isUpperCase())
+        assertTrue("E2E punctuation missing: ${result.text}", result.text.any { it in ",.!?:;" })
         assertEquals(result.tokens.size, result.timestamps.size)
         assertTrue(result.tokens.any { it.isBlank() })
         println("GigaAM whole-recording: ${result.text}")
@@ -69,7 +73,7 @@ class GigaAmInferenceTest {
             release.countDown()
             blocker.join()
             assertTrue(oldRequest.await().exceptionOrNull() is InferenceCancelledException)
-            assertTrue(model.decode(audio).text.endsWith("у лукоморья дуб зеленый"))
+            assertTrue(words(model.decode(audio).text).endsWith("у лукоморья дуб зеленый"))
         }
     }
 
@@ -94,8 +98,8 @@ class GigaAmInferenceTest {
     @Test fun producesRussianWordsBeforeStopAndFinalizesTail() = withModel { model, audio ->
         val (text, partials) = live(model, audio)
         assertTrue("Expected multiple live previews, got $partials", partials >= 3)
-        assertTrue(text, text.contains("ничьих не требуя похвал"))
-        assertTrue(text, text.endsWith("у лукоморья дуб зеленый"))
+        assertTrue(text, words(text).contains("ничьих не требуя похвал"))
+        assertTrue(text, words(text).endsWith("у лукоморья дуб зеленый"))
         println("GigaAM live ($partials previews before stop): $text")
     }
 
@@ -104,9 +108,9 @@ class GigaAmInferenceTest {
         val (text, partials) = live(model, repeated)
         assertTrue(partials >= 15)
         val phrase = "ничьих не требуя похвал"
-        assertEquals(text, 3, Regex(phrase).findAll(text).count())
-        assertTrue(text, text.endsWith("у лукоморья дуб зеленый"))
-        assertFalse("Repeated word at a window boundary: $text", text.contains("у у лукоморья"))
+        assertEquals(text, 3, Regex(phrase).findAll(words(text)).count())
+        assertTrue(text, words(text).endsWith("у лукоморья дуб зеленый"))
+        assertFalse("Repeated word at a window boundary: $text", words(text).contains("у у лукоморья"))
         println("GigaAM long live ($partials previews): $text")
     }
 }

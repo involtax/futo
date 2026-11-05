@@ -6,6 +6,15 @@ import org.junit.Test
 class LiveDictationBufferTest {
     private fun result(text: String) = DecodedSpeech(text, emptyList(), emptyList())
 
+    @Test fun sentencePiecesExposeWordBoundariesAndKeepPunctuation() {
+        val decoded = DecodedSpeech.fromPieces("Привет, мир!",
+            listOf("▁При", "вет", ",", "▁мир", "!"), listOf(0f, 0.2f, 0.3f, 0.5f, 0.6f))
+        assertEquals("Привет, мир!", decoded.tokens.joinToString("").trim())
+        assertEquals(listOf(" ", "При", "вет", ",", " ", "мир", "!"), decoded.tokens)
+        assertEquals(decoded.tokens.size, decoded.timestamps.size)
+        assertEquals(0.5f, decoded.timestamps[4])
+    }
+
     @Test fun silenceNeverInvokesRecognition() {
         val b = LiveDictationBuffer()
         repeat(100) { b.append(FloatArray(1600), false) }
@@ -71,6 +80,16 @@ class LiveDictationBufferTest {
         b.accept(b.snapshot(true)!!, DecodedSpeech("да да два", listOf("да", " ", "да", " ", "два"),
             listOf(0.3f, 1f, 2f, 3f, 4f)))
         assertEquals("один да да два", b.text)
+    }
+
+    @Test fun overlapMatchingIgnoresE2eCaseAndPunctuationWithoutChangingNewText() {
+        val b = LiveDictationBuffer()
+        b.append(FloatArray(16000 * 14), true)
+        b.accept(b.snapshot(false)!!, DecodedSpeech("Один, Да да", listOf("Один,", " ", "Да", " ", "да"),
+            listOf(0f, 8f, 8.5f, 9f, 10f)))
+        b.accept(b.snapshot(true)!!, DecodedSpeech("да Да два.", listOf("да", " ", "Да", " ", "два."),
+            listOf(0.3f, 1f, 2f, 3f, 4f)))
+        assertEquals("Один, Да Да два.", b.text)
     }
 
     @Test fun emptyFinalResultRemovesAnIncorrectPreview() {

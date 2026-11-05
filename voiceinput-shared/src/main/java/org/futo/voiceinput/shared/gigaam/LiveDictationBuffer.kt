@@ -45,7 +45,7 @@ class LiveDictationBuffer {
             overlapSamples = 0
         } else if (snapshot.rollover) {
             // Cut at a decoded word boundary, keeping ~2 seconds uncommitted for context.
-            // GigaAM CTC tokens are characters, with timestamps relative to this window.
+            // Decoder tokens have explicit word separators, with timestamps relative to this window.
             val boundary = fresh.tokens.indices.lastOrNull {
                 it < fresh.timestamps.size && fresh.tokens[it].isBlank() &&
                     fresh.timestamps[it] in 1.0f..10.0f
@@ -86,7 +86,7 @@ class LiveDictationBuffer {
         val words = Regex("\\S+").findAll(raw).toList()
         val oldWords = committed.split(Regex("\\s+"))
         val matching = (minOf(12, words.size, oldWords.size) downTo 1).firstOrNull { n ->
-            words.take(n).map { it.value } == oldWords.takeLast(n)
+            words.take(n).map { normalizeWord(it.value) } == oldWords.takeLast(n).map(::normalizeWord)
         }
         val drop = if (matching != null) {
             val chars = words[matching - 1].range.last + 1
@@ -111,4 +111,6 @@ class LiveDictationBuffer {
     }
 
     private fun join(a: String, b: String) = listOf(a.trim(), b.trim()).filter { it.isNotEmpty() }.joinToString(" ")
+
+    private fun normalizeWord(word: String) = word.lowercase().replace('ё', 'е').replace(Regex("[^\\p{L}\\p{N}]"), "")
 }

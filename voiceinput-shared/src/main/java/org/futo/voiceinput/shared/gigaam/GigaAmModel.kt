@@ -17,7 +17,7 @@ object BuiltInGigaAm : ModelLoader {
     override val name = R.string.gigaam_russian_name
     override fun exists(context: Context) = true
     override fun getRequiredDownloadList(context: Context) = emptyList<String>()
-    override fun key(context: Context): Any = "gigaam-v2-ctc-int8-d0ce4aef"
+    override fun key(context: Context): Any = "gigaam-v3-e2e-ctc-int8-d5fea8df"
     override fun loadModel(context: Context): SpeechModel = try {
         GigaAmModel(GigaAmDecoder("gigaam/model.int8.onnx", "gigaam/tokens.txt", context.assets))
     } catch (e: Exception) {
