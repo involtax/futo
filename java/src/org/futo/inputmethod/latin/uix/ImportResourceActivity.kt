@@ -536,7 +536,8 @@ fun determineFileKind(inputStream: InputStream): FileKindAndInfo {
 
 object ResourceHelper {
     val BuiltInVoiceInputFallbacks = mapOf(
-        "en" to BUILTIN_ENGLISH_MODEL
+        "en" to BUILTIN_ENGLISH_MODEL,
+        "ru" to org.futo.voiceinput.shared.gigaam.BuiltInGigaAm
     )
 
     fun findKeyForLocaleAndKind(context: Context, locale: Locale, kind: FileKind): String? {
@@ -569,6 +570,7 @@ object ResourceHelper {
     }
 
     fun tryFindingVoiceInputModelForLocale(context: Context, locale: Locale): ModelLoader? {
+        if (locale.language == "ru") return org.futo.voiceinput.shared.gigaam.BuiltInGigaAm
         val file = runBlocking { findFileForKind(context, locale, FileKind.VoiceInput) }
             ?: return BuiltInVoiceInputFallbacks[locale.language]
 

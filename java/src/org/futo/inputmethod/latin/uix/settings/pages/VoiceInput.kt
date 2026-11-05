@@ -116,6 +116,12 @@ val VoiceInputMenu = UserSettingsMenu(
             }
         },
 
+        userSettingToggleDataStore(
+            title = org.futo.voiceinput.shared.R.string.gigaam_live_title,
+            subtitle = org.futo.voiceinput.shared.R.string.gigaam_live_subtitle,
+            setting = org.futo.inputmethod.latin.uix.GIGAAM_LIVE_DICTATION
+        ).copy(visibilityCheck = visibilityCheckNotSystemVoiceInput),
+
         //if(!systemVoiceInput.value) {
         userSettingToggleDataStore(
             title = R.string.voice_input_settings_indication_sounds,

@@ -39,7 +39,7 @@ interface ModelLoader {
     fun exists(context: Context): Boolean
     fun getRequiredDownloadList(context: Context): List<String>
 
-    fun loadGGML(context: Context): WhisperGGML
+    fun loadModel(context: Context): SpeechModel
 
     fun key(context: Context): Any
 }
@@ -56,7 +56,7 @@ internal class ModelBuiltInAsset(
         return listOf()
     }
 
-    override fun loadGGML(context: Context): WhisperGGML {
+    override fun loadModel(context: Context): WhisperGGML {
         val file = loadMappedFile(context, ggmlFile)
         return WhisperGGML(file)
     }
@@ -97,7 +97,7 @@ internal class ModelDownloadable(
         }
     }
 
-    override fun loadGGML(context: Context): WhisperGGML {
+    override fun loadModel(context: Context): WhisperGGML {
         val file = context.tryOpenDownloadedModel(ggmlFile)
         return WhisperGGML(file)
     }
@@ -119,7 +119,7 @@ public class ModelFileFile(
         return listOf()
     }
 
-    override fun loadGGML(context: Context): WhisperGGML {
+    override fun loadModel(context: Context): WhisperGGML {
         val file = tryOpenDownloadedModel(file)
         return WhisperGGML(file)
     }

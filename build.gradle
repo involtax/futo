@@ -369,6 +369,7 @@ android {
 
     aaptOptions {
         noCompress 'dict'
+        noCompress 'onnx'
     }
 
     packagingOptions {

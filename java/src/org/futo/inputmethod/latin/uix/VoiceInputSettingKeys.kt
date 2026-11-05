@@ -49,6 +49,11 @@ val USE_VAD_AUTOSTOP = SettingsKey(
     default = true
 )
 
+val GIGAAM_LIVE_DICTATION = SettingsKey(
+    key = booleanPreferencesKey("gigaam_live_dictation"),
+    default = true
+)
+
 val ENGLISH_MODEL_INDEX = SettingsKey(
     key = intPreferencesKey("english_model_index"),
     default = 0

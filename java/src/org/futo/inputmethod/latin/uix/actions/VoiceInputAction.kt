@@ -159,7 +159,8 @@ private class VoiceInputActionWindow(
                 preferBluetoothMic = useBluetoothAudio,
                 requestAudioFocus = requestAudioFocus,
                 canExpandSpace = canExpandSpace,
-                useVADAutoStop = useVAD
+                useVADAutoStop = useVAD,
+                liveDictation = context.getSetting(org.futo.inputmethod.latin.uix.GIGAAM_LIVE_DICTATION)
             )
         )
     }

@@ -110,6 +110,8 @@ android {
 }
 
 dependencies {
+    implementation(name:'sherpa-onnx-1.12.40', ext:'aar')
+    testImplementation 'junit:junit:4.13.2'
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.4'
     implementation 'androidx.lifecycle:lifecycle-runtime:2.8.4'
@@ -130,4 +132,13 @@ dependencies {
     implementation(name:'vad-release', ext:'aar')
 
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1'
+}
+
+tasks.withType(Test).configureEach {
+    if (System.getenv('GIGAAM_TEST_MODEL_DIR')) {
+        systemProperty 'gigaam.modelDir', System.getenv('GIGAAM_TEST_MODEL_DIR')
+    }
+    if (System.getenv('SHERPA_JNI_DIR')) {
+        jvmArgs "-Djava.library.path=${System.getenv('SHERPA_JNI_DIR')}"
+    }
 }

@@ -1,0 +1,2 @@
+voiceinput-shared/src/main/assets/gigaam/model.int8.onnx filter=lfs diff=lfs merge=lfs -text
+third_party/sherpa-onnx/*.aar filter=lfs diff=lfs merge=lfs -text

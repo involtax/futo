@@ -5,6 +5,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.withContext
 import java.nio.Buffer
+import org.futo.voiceinput.shared.types.SpeechModel
 
 @OptIn(DelicateCoroutinesApi::class)
 val inferenceContext = newSingleThreadContext("whisper-ggml-inference")
@@ -21,7 +22,7 @@ class InvalidModelException : Exception("The Whisper model could not be loaded f
 @Keep
 class WhisperGGML(
     modelBuffer: Buffer
-) {
+) : SpeechModel {
     private var handle: Long = 0L
     init {
         handle = openFromBufferNative(modelBuffer)
@@ -42,7 +43,7 @@ class WhisperGGML(
     // 1 language = will force that language
     // 2 or more languages = autodetect between those languages
     @Throws(BailLanguageException::class, InferenceCancelledException::class)
-    suspend fun infer(
+    override suspend fun infer(
         samples: FloatArray,
         prompt: String,
         languages: Array<String>,
@@ -73,12 +74,12 @@ class WhisperGGML(
         }
     }
 
-    fun cancel() {
+    override fun cancel() {
         if(handle == 0L) return
         cancelNative(handle)
     }
 
-    suspend fun close() = withContext(inferenceContext) {
+    override suspend fun close() = withContext(inferenceContext) {
         if(handle != 0L) {
             closeNative(handle)
         }

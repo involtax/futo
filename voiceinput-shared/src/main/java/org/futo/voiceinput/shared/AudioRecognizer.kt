@@ -25,11 +25,17 @@ import com.konovalov.vad.config.SampleRate
 import com.konovalov.vad.models.VadModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import org.futo.voiceinput.shared.ggml.InferenceCancelledException
+import org.futo.voiceinput.shared.gigaam.BuiltInGigaAm
+import org.futo.voiceinput.shared.gigaam.GigaAmModel
+import org.futo.voiceinput.shared.gigaam.LiveDictationBuffer
 import org.futo.voiceinput.shared.ggml.InvalidModelException
 import org.futo.voiceinput.shared.types.AudioRecognizerListener
 import org.futo.voiceinput.shared.types.InferenceState
@@ -81,7 +87,8 @@ data class RecordingSettings(
     val preferBluetoothMic: Boolean,
     val requestAudioFocus: Boolean,
     val canExpandSpace: Boolean,
-    val useVADAutoStop: Boolean
+    val useVADAutoStop: Boolean,
+    val liveDictation: Boolean = true
 )
 
 data class AudioRecognizerSettings(
@@ -95,14 +102,18 @@ class ModelDoesNotExistException(val models: List<ModelLoader>) : Throwable()
 class AudioRecognizer(
     private val context: Context,
     private val lifecycleScope: LifecycleCoroutineScope,
-    modelManager: ModelManager,
+    private val modelManager: ModelManager,
     private val listener: AudioRecognizerListener,
     private val settings: AudioRecognizerSettings
 ) {
-    private var isRecording = false
+    @Volatile private var isRecording = false
     private var recorder: AudioRecord? = null
 
     private val modelRunner = MultiModelRunner(modelManager)
+    private val liveGigaAm = settings.modelRunConfiguration.primaryModel === BuiltInGigaAm && settings.recordingConfiguration.liveDictation
+    private val liveBuffer = LiveDictationBuffer()
+    private val liveRequests = Channel<Unit>(Channel.CONFLATED)
+    private var totalAudioSamples = 0
 
     private val canExpandSpace = settings.recordingConfiguration.canExpandSpace
     private val useVAD = settings.recordingConfiguration.useVADAutoStop
@@ -296,6 +307,49 @@ class AudioRecognizer(
         modelRunner.preload(settings.modelRunConfiguration)
     }
 
+    private fun appendAudio(samples: ShortArray, count: Int, speech: Boolean) {
+        val floats = FloatArray(count) { samples[it].toFloat() / Short.MAX_VALUE.toFloat() }
+        totalAudioSamples += count
+        if (liveGigaAm) {
+            liveBuffer.append(floats, speech)
+            liveRequests.trySend(Unit)
+        } else {
+            floatSamples.put(floats)
+        }
+    }
+
+    private fun startLiveRecognition() {
+        modelJob = lifecycleScope.launch {
+            try {
+                loadModelJob?.join()
+                val model = withContext(Dispatchers.Default) {
+                    modelManager.obtainModel(BuiltInGigaAm) as GigaAmModel
+                }
+                suspend fun update(finishing: Boolean) {
+                    do {
+                        val snapshot = liveBuffer.snapshot(finishing) ?: break
+                        val result = model.decode(snapshot.samples)
+                        ensureActive()
+                        liveBuffer.accept(snapshot, result)
+                        listener.partialResult(liveBuffer.text)
+                    } while (finishing)
+                }
+                for (request in liveRequests) update(false)
+                update(true)
+                ensureActive()
+                listener.finished(liveBuffer.text)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: InferenceCancelledException) {
+                // A closed input transaction must never receive a stale result.
+            } catch (e: Exception) {
+                Log.e("GigaAM", "Live recognizer failed", e)
+                listener.modelLoadingFailed()
+                reset()
+            }
+        }
+    }
+
     private fun expandSpaceIfAllowed(): Boolean {
         if(canExpandSpace) {
             // Allocate an extra 30 seconds
@@ -333,9 +387,9 @@ class AudioRecognizer(
             if (nRead <= 0) break
             yield()
 
-            var isRunningOutOfSpace = (floatSamples.remaining() < nRead.coerceAtLeast(1600)) && !expandSpaceIfAllowed()
+            val isRunningOutOfSpace = !liveGigaAm && (floatSamples.remaining() < nRead.coerceAtLeast(1600)) && !expandSpaceIfAllowed()
 
-            val hasNotTalkedRecently = hasTalked && (numConsecutiveNonSpeech > 66) && useVAD
+            val hasNotTalkedRecently = !liveGigaAm && hasTalked && (numConsecutiveNonSpeech > 66) && useVAD
             if (isRunningOutOfSpace || hasNotTalkedRecently) {
                 yield()
                 withContext(Dispatchers.Main) {
@@ -345,7 +399,7 @@ class AudioRecognizer(
             }
 
             // Run VAD
-            if(useVAD && vad != null) {
+            if((useVAD || liveGigaAm) && vad != null) {
                 var remainingSamples = nRead
                 var offset = 0
                 while (remainingSamples > 0) {
@@ -374,11 +428,11 @@ class AudioRecognizer(
                 }
             }
 
-            floatSamples.put(samples.sliceArray(0 until nRead).map { it.toFloat() / Short.MAX_VALUE.toFloat() }.toFloatArray())
+            appendAudio(samples, nRead, numConsecutiveSpeech > 0)
 
             // Don't set hasTalked if the start sound may still be playing, otherwise on some
             // devices the rms just explodes and `hasTalked` is always true
-            val startSoundPassed = (floatSamples.position() > 16000 * 0.6)
+            val startSoundPassed = (totalAudioSamples > 16000 * 0.6)
             if (!startSoundPassed) {
                 numConsecutiveSpeech = 0
                 numConsecutiveNonSpeech = 0
@@ -396,7 +450,7 @@ class AudioRecognizer(
             }
 
             // Check if mic is blocked
-            val blockCheckTimePassed = (floatSamples.position() > 2 * 16000) // two seconds
+            val blockCheckTimePassed = (totalAudioSamples > 2 * 16000) // two seconds
             if (!anyNoiseAtAll && canMicBeBlocked && blockCheckTimePassed) {
                 isMicBlocked = true
             }
@@ -424,14 +478,15 @@ class AudioRecognizer(
                     samples, 0, 1600, AudioRecord.READ_NON_BLOCKING
                 )
                 if (nRead2 > 0) {
-                    if (floatSamples.remaining() < nRead2 && !expandSpaceIfAllowed()) {
+                    if (!liveGigaAm && floatSamples.remaining() < nRead2 && !expandSpaceIfAllowed()) {
                         yield()
                         withContext(Dispatchers.Main) {
                             finish()
                         }
                         break
                     }
-                    floatSamples.put(samples.sliceArray(0 until nRead2).map { it.toFloat() / Short.MAX_VALUE.toFloat() }.toFloatArray())
+                    val catchUpSpeech = samples.take(nRead2).any { kotlin.math.abs(it.toInt()) > 1000 }
+                    appendAudio(samples, nRead2, catchUpSpeech)
                 } else {
                     break
                 }
@@ -465,7 +520,7 @@ class AudioRecognizer(
 
             recorderJob = lifecycleScope.launch {
                 withContext(Dispatchers.Default) {
-                    if(useVAD) {
+                    if(useVAD || liveGigaAm) {
                         createVad().use { vad ->
                             recordingJob(recorder, vad)
                         }
@@ -523,6 +578,7 @@ class AudioRecognizer(
                 }
             }
         }
+        if (liveGigaAm) startLiveRecognition()
     }
 
     private val runnerCallback: ModelInferenceCallback = object : ModelInferenceCallback {
@@ -588,6 +644,14 @@ class AudioRecognizer(
         recorder?.stop()
 
         listener.processing()
+
+        if (liveGigaAm) {
+            lifecycleScope.launch {
+                recorderJob?.cancelAndJoin()
+                liveRequests.close()
+            }
+            return
+        }
 
         modelJob = lifecycleScope.launch {
             withContext(Dispatchers.Default) {

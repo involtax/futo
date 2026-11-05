@@ -1,0 +1,5 @@
+<resources>
+    <string name="gigaam_russian_name">GigaAM v2 · русский · встроена</string>
+    <string name="gigaam_live_title">Русская диктовка в реальном времени</string>
+    <string name="gigaam_live_subtitle">Слова появляются во время записи. Пауза завершает фразу; нажатие останавливает запись. Выключите для распознавания после записи.</string>
+</resources>

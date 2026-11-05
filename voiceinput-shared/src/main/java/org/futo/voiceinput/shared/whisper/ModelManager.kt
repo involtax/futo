@@ -1,24 +1,26 @@
 package org.futo.voiceinput.shared.whisper
 
 import android.content.Context
-import org.futo.voiceinput.shared.ggml.WhisperGGML
+import org.futo.voiceinput.shared.types.SpeechModel
 import org.futo.voiceinput.shared.types.ModelLoader
 
 
 class ModelManager(
     val context: Context
 ) {
-    private val loadedModels: HashMap<Any, WhisperGGML> = hashMapOf()
+    private val loadedModels: HashMap<Any, SpeechModel> = hashMapOf()
 
-    fun obtainModel(model: ModelLoader): WhisperGGML {
+    @Synchronized
+    fun obtainModel(model: ModelLoader): SpeechModel {
         val key = model.key(context)
         if (!loadedModels.contains(key)) {
-            loadedModels[key] = model.loadGGML(context)
+            loadedModels[key] = model.loadModel(context)
         }
 
         return loadedModels[key]!!
     }
 
+    @Synchronized
     fun cancelAll() {
         loadedModels.forEach {
             it.value.cancel()
@@ -26,11 +28,12 @@ class ModelManager(
     }
 
     suspend fun cleanUp() {
-        for (model in loadedModels.entries) {
-            model.value.cancel()
-            model.value.close()
+        val models = synchronized(this) {
+            loadedModels.values.toList().also { loadedModels.clear() }
         }
-
-        loadedModels.clear()
+        for (model in models) {
+            model.cancel()
+            model.close()
+        }
     }
 }

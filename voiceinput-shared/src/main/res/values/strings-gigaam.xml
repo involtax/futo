@@ -1,0 +1,5 @@
+<resources>
+    <string name="gigaam_russian_name">GigaAM v2 Russian · built in</string>
+    <string name="gigaam_live_title">Live Russian dictation</string>
+    <string name="gigaam_live_subtitle">Show words while recording with built-in GigaAM. Pauses finish phrases; tap to stop recording. Turn off to transcribe after recording.</string>
+</resources>
